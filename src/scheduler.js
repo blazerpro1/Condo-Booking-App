@@ -128,7 +128,13 @@ async function run() {
   const runNow = process.argv.includes('--now') || process.env.RUN_NOW === '1';
 
   const nowMYT = DateTime.now().setZone(ZONE);
-  const targetDate = nowMYT.plus({ days: ADVANCE_DAYS }).startOf('day');
+
+  // The booking fires at the UPCOMING midnight (unless --now). At that
+  // moment the calendar date has rolled over to the next day, so the date
+  // entering the booking window is (that next day) + ADVANCE_DAYS.
+  // In --now mode we're firing immediately, so "today" is the reference.
+  const fireDay = runNow ? nowMYT.startOf('day') : nowMYT.plus({ days: 1 }).startOf('day');
+  const targetDate = fireDay.plus({ days: ADVANCE_DAYS }).startOf('day');
 
   if (targetDate.weekday !== TARGET_WEEKDAY) {
     log(
