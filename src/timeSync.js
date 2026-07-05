@@ -1,4 +1,5 @@
 const { log } = require('./logger');
+const { jsonHeaders, authHeaders } = require('./httpHeaders');
 
 const BASE_URL = process.env.BASE_URL || 'https://api.advelsoft.my';
 
@@ -32,7 +33,7 @@ async function checkClockDrift(sampleCount = 5) {
       // a body will 400 but still returns headers, which is all we need.
       res = await fetch(`${BASE_URL}/login/loginCheck`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: jsonHeaders(),
         body: '{}',
       });
     } catch (err) {
@@ -85,10 +86,7 @@ async function measureLatency(token, sampleCount = 5) {
     const t0 = Date.now();
     try {
       await fetch(`${BASE_URL}/authenticated/home/facilities/facilityRead`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'wy-user-agent': process.env.WY_USER_AGENT,
-        },
+        headers: authHeaders(token),
       });
     } catch (err) {
       continue;

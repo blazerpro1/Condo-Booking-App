@@ -1,3 +1,5 @@
+const { jsonHeaders } = require('./httpHeaders');
+
 const BASE_URL = process.env.BASE_URL || 'https://api.advelsoft.my';
 
 /**
@@ -8,10 +10,7 @@ const BASE_URL = process.env.BASE_URL || 'https://api.advelsoft.my';
 async function login() {
   const res = await fetch(`${BASE_URL}/login/loginCheck`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'wy-user-agent': process.env.WY_USER_AGENT,
-    },
+    headers: jsonHeaders(),
     body: JSON.stringify({
       email: process.env.LOGIN_EMAIL,
       password: process.env.LOGIN_PASSWORD,

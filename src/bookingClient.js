@@ -1,12 +1,6 @@
-const BASE_URL = process.env.BASE_URL || 'https://api.advelsoft.my';
+const { authHeaders } = require('./httpHeaders');
 
-function authHeaders(token) {
-  return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${token}`,
-    'wy-user-agent': process.env.WY_USER_AGENT,
-  };
-}
+const BASE_URL = process.env.BASE_URL || 'https://api.advelsoft.my';
 
 /**
  * Read the rolling 14-day availability window for a given bookingTypeID.
