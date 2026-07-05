@@ -1,75 +1,75 @@
-const { jsonHeaders, authHeaders } = require('./httpHeaders');
+const { authHeaders } = require('./httpHeaders');
 
 const BASE_URL = process.env.BASE_URL || 'https://api.advelsoft.my';
 
 /**
- * The real app always calls POST /device/create right after a successful
- * login, before using the token for anything else. Without this step, the
- * token from loginCheck is apparently not yet "activated" for other
- * authenticated endpoints (facilityRead, booking, etc).
+ * The app authenticates using a long-lived "master" token that is stored
+ * persistently on the device and survives logout / app restarts. This
+ * token is sent as the Authorization: Bearer header. The actual login
+ * flow the app performs on launch is:
  *
- * Device metadata values below are just descriptive fields matching what
- * a real iPhone sends - they don't need to match your actual device
- * exactly, but can be overridden via .env if the server ever starts
- * validating them more strictly.
+ *   1. POST /superTokenCheck   (master token) -> validates the master token
+ *   2. POST /login/tokenCheck  (master token) -> returns a fresh short-lived
+ *                                                session token (userTokenNo)
+ *
+ * The session token returned by step 2 is what must be used for all other
+ * authenticated endpoints (facilityDetailedRead, booking, etc). The master
+ * token itself does NOT work directly on those endpoints.
+ *
+ * Set MASTER_TOKEN in .env to the persistent token captured from the app's
+ * superTokenCheck / tokenCheck Authorization header.
  */
-async function registerDevice(token) {
-  const res = await fetch(`${BASE_URL}/device/create`, {
-    method: 'POST',
-    headers: authHeaders(token),
-    body: JSON.stringify({
-      deviceAppVersion: process.env.DEVICE_APP_VERSION || '1.3.23',
-      deviceBuildVersion: process.env.DEVICE_BUILD_VERSION || '1',
-      deviceName: 'iPhone',
-      deviceBrand: 'Apple',
-      deviceManufacturer: 'Apple',
-      deviceOS: 'iOS',
-      deviceOSVersion: process.env.DEVICE_OS_VERSION || '18.0',
-      deviceModel: process.env.DEVICE_MODEL || 'iPhone',
-      notificationID: process.env.NOTIFICATION_ID || '',
-      notificationPushToken: process.env.NOTIFICATION_PUSH_TOKEN || '',
-      notificationSubscribed: '0',
-    }),
-  });
 
+function getMasterToken() {
+  const master = process.env.MASTER_TOKEN;
+  if (!master) {
+    throw new Error('MASTER_TOKEN is not set in .env');
+  }
+  return master;
+}
+
+async function superTokenCheck(masterToken) {
+  const res = await fetch(`${BASE_URL}/superTokenCheck`, {
+    method: 'POST',
+    headers: authHeaders(masterToken),
+    body: '{}',
+  });
   const body = await res.json().catch(() => ({}));
   if (body.status !== 'Success') {
     throw new Error(
-      `Device registration failed (HTTP ${res.status}): ${body.message || 'unexpected response shape'}`
+      `superTokenCheck failed (HTTP ${res.status}): ${body.message || 'unexpected response'} ` +
+        `- the MASTER_TOKEN may be stale; re-capture it from the app.`
     );
   }
+  return true;
+}
 
-  return body.deviceID;
+async function tokenCheck(masterToken) {
+  const res = await fetch(`${BASE_URL}/login/tokenCheck`, {
+    method: 'POST',
+    headers: authHeaders(masterToken),
+    body: '{}',
+  });
+  const body = await res.json().catch(() => ({}));
+  const sessionToken = body?.data?.[0]?.userTokenNo;
+  if (body.status !== 'Success' || !sessionToken) {
+    throw new Error(
+      `tokenCheck failed (HTTP ${res.status}): ${body.message || 'unexpected response shape'}`
+    );
+  }
+  return sessionToken;
 }
 
 /**
- * Logs in with the credentials in .env, then registers the device to
- * activate the token, and returns the bearer token (the API calls it
- * `userTokenNo`) ready for use on other authenticated endpoints.
- * Throws if login or device registration fails.
+ * Performs the full auth handshake using the persistent master token and
+ * returns a fresh session token (userTokenNo) usable for booking/read
+ * endpoints.
  */
 async function login() {
-  const res = await fetch(`${BASE_URL}/login/loginCheck`, {
-    method: 'POST',
-    headers: jsonHeaders(),
-    body: JSON.stringify({
-      email: process.env.LOGIN_EMAIL,
-      password: process.env.LOGIN_PASSWORD,
-    }),
-  });
-
-  const body = await res.json().catch(() => ({}));
-
-  const token = body?.data?.[0]?.userTokenNo;
-  if (body.status !== 'Success' || !token) {
-    throw new Error(
-      `Login failed (HTTP ${res.status}): ${body.message || 'unexpected response shape'}`
-    );
-  }
-
-  await registerDevice(token);
-
-  return token;
+  const masterToken = getMasterToken();
+  await superTokenCheck(masterToken);
+  const sessionToken = await tokenCheck(masterToken);
+  return sessionToken;
 }
 
 module.exports = { login };

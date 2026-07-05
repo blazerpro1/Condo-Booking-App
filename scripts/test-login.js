@@ -4,9 +4,10 @@ const { login } = require('../src/auth');
 (async () => {
   try {
     const token = await login();
-    console.log('Login succeeded. Token (truncated):', token.slice(0, 20) + '...');
+    console.log('Auth flow succeeded (superTokenCheck -> tokenCheck).');
+    console.log('Fresh session token (truncated):', token.slice(0, 20) + '...');
   } catch (err) {
-    console.error('Login failed:', err.message);
+    console.error('Auth flow failed:', err.message);
     process.exit(1);
   }
 })();
