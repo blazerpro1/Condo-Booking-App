@@ -125,6 +125,8 @@ async function bookOneCourt(token, bookingTypeID, targetDate) {
 }
 
 async function run() {
+  const runNow = process.argv.includes('--now') || process.env.RUN_NOW === '1';
+
   const nowMYT = DateTime.now().setZone(ZONE);
   const targetDate = nowMYT.plus({ days: ADVANCE_DAYS }).startOf('day');
 
@@ -152,15 +154,19 @@ async function run() {
 
   const latencyMs = await measureLatency(token);
 
-  const nextMidnight = nowMYT.plus({ days: 1 }).startOf('day');
-  const fireAtEpochMs = nextMidnight.toMillis() - Math.round(latencyMs / 2);
+  if (runNow) {
+    log('RUN NOW mode: skipping midnight wait, firing immediately.');
+  } else {
+    const nextMidnight = nowMYT.plus({ days: 1 }).startOf('day');
+    const fireAtEpochMs = nextMidnight.toMillis() - Math.round(latencyMs / 2);
 
-  log(
-    `Waiting until ${new Date(fireAtEpochMs).toISOString()} ` +
-      `(midnight MYT minus ${Math.round(latencyMs / 2)}ms latency compensation).`
-  );
+    log(
+      `Waiting until ${new Date(fireAtEpochMs).toISOString()} ` +
+        `(midnight MYT minus ${Math.round(latencyMs / 2)}ms latency compensation).`
+    );
 
-  await waitUntilPrecise(fireAtEpochMs);
+    await waitUntilPrecise(fireAtEpochMs);
+  }
 
   log(`Firing precise attempts for courts: ${BOOKING_TYPE_IDS.join(', ')}`);
 

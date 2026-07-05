@@ -11,7 +11,8 @@
     "start": "node index.js",
     "dry-run": "node index.js --dry-run",
     "test-notify": "node scripts/test-notify.js",
-    "test-login": "node scripts/test-login.js"
+    "test-login": "node scripts/test-login.js",
+    "start:now": "node index.js --now"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
