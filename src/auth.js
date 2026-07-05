@@ -3,21 +3,24 @@ const { authHeaders } = require('./httpHeaders');
 const BASE_URL = process.env.BASE_URL || 'https://api.advelsoft.my';
 
 /**
- * The app authenticates using a long-lived "master" token that is stored
- * persistently on the device and survives logout / app restarts. This
- * token is sent as the Authorization: Bearer header. The actual login
- * flow the app performs on launch is:
+ * Auth model (reverse-engineered):
  *
- *   1. POST /superTokenCheck   (master token) -> validates the master token
- *   2. POST /login/tokenCheck  (master token) -> returns a fresh short-lived
- *                                                session token (userTokenNo)
+ * - The working session token for authenticated endpoints (booking,
+ *   facilityRead, etc.) is `userTokenNo`.
+ * - `userTokenNo` is minted by a fresh email+password POST /login/loginCheck.
+ * - CRUCIALLY: the app always sends a persistent "master" token in the
+ *   Authorization: Bearer header even on the loginCheck call itself. Sending
+ *   email+password WITHOUT this header is rejected with 403 "Access Denied".
+ *   This was the cause of our earlier login failures.
+ * - The master token (MASTER_TOKEN in .env) is long-lived and stored on the
+ *   device; it survives app restarts. It does NOT work directly on booking
+ *   endpoints - it only authorizes the login/token-validation calls.
  *
- * The session token returned by step 2 is what must be used for all other
- * authenticated endpoints (facilityDetailedRead, booking, etc). The master
- * token itself does NOT work directly on those endpoints.
- *
- * Set MASTER_TOKEN in .env to the persistent token captured from the app's
- * superTokenCheck / tokenCheck Authorization header.
+ * So the login flow is:
+ *   POST /login/loginCheck
+ *     headers: Authorization: Bearer <MASTER_TOKEN>
+ *     body:    { email, password }
+ *   -> returns fresh userTokenNo (the session token used for everything else)
  */
 
 function getMasterToken() {
@@ -28,47 +31,33 @@ function getMasterToken() {
   return master;
 }
 
-async function superTokenCheck(masterToken) {
-  const res = await fetch(`${BASE_URL}/superTokenCheck`, {
-    method: 'POST',
-    headers: authHeaders(masterToken),
-    body: '{}',
-  });
-  const body = await res.json().catch(() => ({}));
-  if (body.status !== 'Success') {
-    throw new Error(
-      `superTokenCheck failed (HTTP ${res.status}): ${body.message || 'unexpected response'} ` +
-        `- the MASTER_TOKEN may be stale; re-capture it from the app.`
-    );
-  }
-  return true;
-}
-
-async function tokenCheck(masterToken) {
-  const res = await fetch(`${BASE_URL}/login/tokenCheck`, {
-    method: 'POST',
-    headers: authHeaders(masterToken),
-    body: '{}',
-  });
-  const body = await res.json().catch(() => ({}));
-  const sessionToken = body?.data?.[0]?.userTokenNo;
-  if (body.status !== 'Success' || !sessionToken) {
-    throw new Error(
-      `tokenCheck failed (HTTP ${res.status}): ${body.message || 'unexpected response shape'}`
-    );
-  }
-  return sessionToken;
-}
-
 /**
- * Performs the full auth handshake using the persistent master token and
- * returns a fresh session token (userTokenNo) usable for booking/read
- * endpoints.
+ * Performs a fresh email+password login (authorized by the master token)
+ * and returns a fresh session token (userTokenNo) usable for booking/read
+ * endpoints. Throws if login fails or the response shape is unexpected.
  */
 async function login() {
   const masterToken = getMasterToken();
-  await superTokenCheck(masterToken);
-  const sessionToken = await tokenCheck(masterToken);
+
+  const res = await fetch(`${BASE_URL}/login/loginCheck`, {
+    method: 'POST',
+    headers: authHeaders(masterToken),
+    body: JSON.stringify({
+      email: process.env.LOGIN_EMAIL,
+      password: process.env.LOGIN_PASSWORD,
+    }),
+  });
+
+  const body = await res.json().catch(() => ({}));
+
+  const sessionToken = body?.data?.[0]?.userTokenNo;
+  if (body.status !== 'Success' || !sessionToken) {
+    throw new Error(
+      `Login failed (HTTP ${res.status}): ${body.message || 'unexpected response shape'} ` +
+        `- if this says "Access Denied", the MASTER_TOKEN may be stale; re-capture it from the app.`
+    );
+  }
+
   return sessionToken;
 }
 
