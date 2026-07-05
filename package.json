@@ -1,0 +1,20 @@
+{
+  "name": "condo-booking-bot",
+  "version": "1.0.0",
+  "description": "Automated scheduler to book condo badminton court slots the instant they open (14 days in advance).",
+  "main": "index.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "dry-run": "node index.js --dry-run",
+    "test-notify": "node scripts/test-notify.js",
+    "test-login": "node scripts/test-login.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "luxon": "^3.5.0"
+  }
+}
