@@ -79,10 +79,12 @@ async function burstFallback(token, payload) {
   while (Date.now() - start < BURST_MAX_DURATION_MS) {
     lastResult = await attemptBooking(currentToken, payload);
 
+    // Stop immediately on a definitive outcome: booked, or genuinely taken.
     if (lastResult.success || lastResult.reason === 'slot_taken') {
       return lastResult;
     }
 
+    // On auth errors, refresh the token before the next attempt.
     if (lastResult.reason === 'auth_error') {
       log(`Burst fallback (bookingTypeID ${payload.bookingTypeID}) hit an auth error, re-logging in.`);
       try {
@@ -92,6 +94,8 @@ async function burstFallback(token, payload) {
       }
     }
 
+    // For not_open_yet and transient server errors ("unknown"), just keep
+    // retrying until we succeed, hit slot_taken, or run out of time.
     await sleep(BURST_INTERVAL_MS);
   }
 
@@ -115,8 +119,12 @@ async function bookOneCourt(token, bookingTypeID, targetDate) {
   let result = await attemptBooking(token, payload);
   log(`[court ${bookingTypeID}] First attempt result: ${JSON.stringify(result)}`);
 
-  if (!result.success && result.reason === 'not_open_yet') {
-    log(`[court ${bookingTypeID}] Not open yet on first attempt - entering burst fallback.`);
+  // Retry on "not open yet" (timing slop) OR transient server errors
+  // (e.g. the midnight load spike returning a 500-style "server error"),
+  // but NOT on a definitive slot_taken - that one is final.
+  const retriable = !result.success && result.reason !== 'slot_taken';
+  if (retriable) {
+    log(`[court ${bookingTypeID}] First attempt not successful (${result.reason}) - entering burst fallback.`);
     result = await burstFallback(token, payload);
     log(`[court ${bookingTypeID}] Burst fallback result: ${JSON.stringify(result)}`);
   }
